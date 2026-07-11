@@ -1,0 +1,14 @@
+# Built binaries
+/startd
+/starter
+/cmd/startd/startd
+/cmd/starter/starter
+*.test
+*.out
+# Build/scratch dirs
+/build/
+/build-*/
+# Editor/OS
+.vscode/
+.idea/
+.DS_Store
