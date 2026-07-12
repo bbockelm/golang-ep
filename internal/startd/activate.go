@@ -226,7 +226,7 @@ func (c *Core) handleActivateClaim(ctx context.Context, conn *cedarserver.Conn) 
 	}
 
 	out := message.NewMessageForStream(conn.Stream)
-	if err := out.PutInt(ctx, dec.code); err == nil {
+	if err = out.PutInt(ctx, dec.code); err == nil {
 		err = out.FinishMessage(ctx)
 	} else {
 		_ = out.FinishMessage(ctx)

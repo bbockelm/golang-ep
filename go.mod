@@ -3,10 +3,11 @@ module github.com/bbockelm/golang-ep
 go 1.25.7
 
 require (
-	github.com/PelicanPlatform/classad v0.4.0
-	github.com/PelicanPlatform/classad/collections v0.4.0
-	github.com/bbockelm/cedar v0.3.0
-	github.com/bbockelm/golang-htcondor v0.5.0
+	github.com/PelicanPlatform/classad v0.5.2
+	github.com/PelicanPlatform/classad/collections v0.5.2
+	github.com/bbockelm/cedar v0.5.2
+	github.com/bbockelm/golang-ap v0.0.0-20260712133627-64ae8d7636a0
+	github.com/bbockelm/golang-htcondor v0.6.0
 	golang.org/x/sys v0.46.0
 )
 
@@ -19,22 +20,9 @@ require (
 )
 
 require (
-	github.com/bbockelm/golang-ap v0.0.0
 	github.com/bbockelm/gosssd v0.0.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
-
-// Build against the local checkouts so the EP tracks in-progress cedar,
-// golang-htcondor, and classad changes (matching the developer's workspace).
-replace github.com/bbockelm/cedar => /Users/bbockelm/projects/golang-cedar
-
-replace github.com/bbockelm/golang-htcondor => /Users/bbockelm/projects/golang-htcondor
-
-replace github.com/PelicanPlatform/classad => /Users/bbockelm/projects/golang-classads
-
-replace github.com/PelicanPlatform/classad/collections => /Users/bbockelm/projects/golang-classads/collections
-
-replace github.com/bbockelm/golang-ap => /Users/bbockelm/projects/golang-ap

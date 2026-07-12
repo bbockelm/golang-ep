@@ -63,8 +63,8 @@ func TestCARequestCodecRoundTrip(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			cw, sw := net.Pipe()
-			defer cw.Close()
-			defer sw.Close()
+			defer func() { _ = cw.Close() }()
+			defer func() { _ = sw.Close() }()
 			wr := stream.NewStream(cw)
 			rd := stream.NewStream(sw)
 

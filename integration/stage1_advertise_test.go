@@ -189,7 +189,7 @@ SEC_DEFAULT_CRYPTO_METHODS = AES
 // per-slot table (one entry per slot). Only ads whose Name looks like
 // "slotN@..." are kept (defensive against a stray non-startd ad).
 func querySlots(ctx context.Context, col *htcondor.Collector) map[string]*classad.ClassAd {
-	ads, err := col.QueryAds(ctx, "Machine", "")
+	ads, _, err := col.QueryAdsWithOptions(ctx, "Machine", "", nil)
 	if err != nil {
 		return nil
 	}

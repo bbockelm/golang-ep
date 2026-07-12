@@ -39,8 +39,8 @@ func writeAd(ctx context.Context, out *message.Message, numExprs int, wireString
 // trailing MyType/TargetType are consumed so the message reaches EOM.
 func TestGetClassAdDecodesSecretMarker(t *testing.T) {
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	defer func() { _ = c1.Close() }()
+	defer func() { _ = c2.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -91,8 +91,8 @@ func TestGetClassAdDecodesSecretMarker(t *testing.T) {
 // skipped (reported via the callback) rather than failing the whole ad.
 func TestGetClassAdSkipsUnparseable(t *testing.T) {
 	c1, c2 := net.Pipe()
-	defer c1.Close()
-	defer c2.Close()
+	defer func() { _ = c1.Close() }()
+	defer func() { _ = c2.Close() }()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

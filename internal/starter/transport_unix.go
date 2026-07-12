@@ -419,21 +419,16 @@ func (s *unixStarter) manage() {
 // transport is closed.
 func (s *unixStarter) reaccept() (*net.UnixConn, bool) {
 	_ = s.ln.SetDeadline(time.Now().Add(s.gap))
-	for {
-		if s.relayCtx.Err() != nil {
-			return nil, false
-		}
-		c, err := s.ln.AcceptUnix()
-		if err == nil {
-			_ = s.ln.SetDeadline(time.Time{})
-			return c, true
-		}
-		// Deadline (lease elapsed) or listener closed (Close): give up.
-		if ne, ok := err.(net.Error); ok && ne.Timeout() {
-			return nil, false
-		}
+	if s.relayCtx.Err() != nil {
 		return nil, false
 	}
+	c, err := s.ln.AcceptUnix()
+	if err != nil {
+		// Deadline (lease elapsed) or listener closed (Close): give up.
+		return nil, false
+	}
+	_ = s.ln.SetDeadline(time.Time{})
+	return c, true
 }
 
 // readConn reads control messages off one control connection. It intercepts
