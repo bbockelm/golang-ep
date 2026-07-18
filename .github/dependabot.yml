@@ -1,0 +1,15 @@
+# Managed by Dependabot: keep GitHub Actions current (including SHA-pinned actions,
+# whose pins are bumped when the action cuts a new release). Grouped into a single
+# weekly PR to keep the noise down.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "ci(deps)"
