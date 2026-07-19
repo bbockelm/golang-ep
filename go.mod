@@ -3,11 +3,11 @@ module github.com/bbockelm/golang-ep
 go 1.25.7
 
 require (
-	github.com/PelicanPlatform/classad v0.5.2
-	github.com/PelicanPlatform/classad/collections v0.5.2
-	github.com/bbockelm/cedar v0.5.2
+	github.com/PelicanPlatform/classad v0.8.0
+	github.com/PelicanPlatform/classad/collections v0.8.0
+	github.com/bbockelm/cedar v0.5.6
 	github.com/bbockelm/golang-ap v0.0.0-20260712133627-64ae8d7636a0
-	github.com/bbockelm/golang-htcondor v0.6.0
+	github.com/bbockelm/golang-htcondor v0.7.0
 	golang.org/x/sys v0.46.0
 )
 
