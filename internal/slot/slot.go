@@ -679,9 +679,40 @@ func (s *Slot) Activity() string {
 func (s *Slot) SetStateActivity(state, activity string, now time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.setStateActivityLocked(state, activity, now)
+}
+
+func (s *Slot) setStateActivityLocked(state, activity string, now time.Time) {
 	s.state = state
 	s.activity = activity
 	s.entered = now.Unix()
+}
+
+// SetClaimState installs c as the slot's claim and moves the slot to
+// state/activity in one step, so an ad built concurrently (PublicAd on a
+// query or advertise goroutine) never pairs the new claim with the old
+// state. Caller must be the event loop.
+func (s *Slot) SetClaimState(c *claim.Claim, state, activity string, now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claim = c
+	s.setStateActivityLocked(state, activity, now)
+}
+
+// AcceptClaim records an accepted REQUEST_CLAIM on the slot's claim and
+// moves the slot to Claimed/Idle in one step. The claim's user and client
+// machine, which a Claimed slot's ad carries, are written under the slot
+// lock that PublicAd reads them under. Caller must be the event loop.
+func (s *Slot) AcceptClaim(info claim.AcceptInfo) {
+	now := info.Now
+	if now.IsZero() {
+		now = time.Now()
+		info.Now = now
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.claim.Accept(info)
+	s.setStateActivityLocked("Claimed", "Idle", now)
 }
 
 // setExpr parses str as a ClassAd expression and inserts it under name. If it

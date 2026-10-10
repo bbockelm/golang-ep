@@ -363,19 +363,29 @@ func (c *Core) doMatchTimeout(ctx context.Context, ev evMatchTimeout) {
 	if cl == nil || cl.ClaimID() != ev.claimID {
 		return
 	}
-	if c.minter != nil {
-		if fresh, err := c.minter.Mint(); err != nil {
-			c.log.Error(logging.DestinationGeneral, "minting fresh claim on match timeout failed",
-				"slot", s.Name, "err", err.Error())
-		} else {
-			s.SetClaim(fresh)
-		}
-	}
-	s.SetStateActivity("Unclaimed", "Idle", time.Now())
+	c.unclaimSlot(s, "match timeout")
 	c.persistSlot(s)
 	c.log.Info(logging.DestinationGeneral, "match timed out; slot back to Unclaimed with a fresh claim id",
 		"slot", s.Name)
 	c.reAdvertise(ctx)
+}
+
+// unclaimSlot returns s to Unclaimed/Idle with a freshly minted claim, in one
+// step so no concurrently built ad shows the fresh claim on a slot still
+// advertised as Claimed. If minting fails (or claiming is disabled) the slot
+// keeps its claim. why names the transition in the log. Loop-only.
+func (c *Core) unclaimSlot(s *slot.Slot, why string) {
+	now := time.Now()
+	if c.minter != nil {
+		fresh, err := c.minter.Mint()
+		if err == nil {
+			s.SetClaimState(fresh, "Unclaimed", "Idle", now)
+			return
+		}
+		c.log.Error(logging.DestinationGeneral, "minting fresh claim on "+why+" failed",
+			"slot", s.Name, "err", err.Error())
+	}
+	s.SetStateActivity("Unclaimed", "Idle", now)
 }
 
 // doRequestClaim validates and accepts a REQUEST_CLAIM, replying the decision to
@@ -422,17 +432,15 @@ func (c *Core) doRequestClaim(ctx context.Context, ev evRequestClaim) {
 		return
 	}
 
-	now := time.Now()
-	cl.Accept(claim.AcceptInfo{
+	s.AcceptClaim(claim.AcceptInfo{
 		ScheddAddr:    ev.scheddAddr,
 		ScheddName:    adString(ev.reqAd, "ScheddName"),
 		User:          firstNonEmptyAttr(ev.reqAd, "User", "Owner"),
 		ClientMachine: ev.clientMachine,
 		AliveInterval: ev.aliveInterval,
 		AlivesMissed:  c.alivesMissed,
-		Now:           now,
+		Now:           time.Now(),
 	})
-	s.SetStateActivity("Claimed", "Idle", now)
 	c.persistSlot(s)
 
 	var claimed []claimedSlotReply
@@ -494,7 +502,7 @@ func (c *Core) doRequestClaimPSlot(ctx context.Context, ev evRequestClaim, ps *s
 	c.dslotSeq++
 	dslot := slot.NewDynamicSlot(ps, c.dslotSeq, req, now)
 	dslot.SetClaim(dClaim)
-	dClaim.Accept(claim.AcceptInfo{
+	dslot.AcceptClaim(claim.AcceptInfo{
 		ScheddAddr:    ev.scheddAddr,
 		ScheddName:    adString(ev.reqAd, "ScheddName"),
 		User:          firstNonEmptyAttr(ev.reqAd, "User", "Owner"),
@@ -503,7 +511,6 @@ func (c *Core) doRequestClaimPSlot(ctx context.Context, ev evRequestClaim, ps *s
 		AlivesMissed:  c.alivesMissed,
 		Now:           now,
 	})
-	dslot.SetStateActivity("Claimed", "Idle", now)
 	ps.Carve(req)
 	c.addDSlot(dslot)
 	c.refreshPSlotChildren(ps)
@@ -608,16 +615,7 @@ func (c *Core) releaseSlot(ctx context.Context, s *slot.Slot, reason string) {
 		return
 	}
 
-	if c.minter != nil {
-		fresh, err := c.minter.Mint()
-		if err != nil {
-			c.log.Error(logging.DestinationGeneral, "minting fresh claim on release failed",
-				"slot", s.Name, "err", err.Error())
-		} else {
-			s.SetClaim(fresh)
-		}
-	}
-	s.SetStateActivity("Unclaimed", "Idle", time.Now())
+	c.unclaimSlot(s, "release")
 	c.persistSlot(s)
 	c.log.Info(logging.DestinationGeneral, "claim released", "slot", s.Name, "reason", reason)
 	c.reAdvertise(ctx)
