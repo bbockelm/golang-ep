@@ -3,6 +3,7 @@ package startd
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -674,26 +675,27 @@ func (c *Core) doStarterHello(ev evStarterHello) {
 
 // doLocateStarter answers a CA_LOCATE_STARTER lookup from live activations first,
 // then the durable store (a surviving starter whose startd just restarted may
-// not have re-Hello'd yet, but its address is on disk).
+// not have re-Hello'd yet, but its address is on disk). As in the C++ startd
+// (ResMgr::getClaimByGlobalJobIdAndId) the request must carry the claim's full,
+// secret claim id; a GlobalJobId, when given, must belong to that same claim.
+// A GlobalJobId alone is public and locates nothing.
 func (c *Core) doLocateStarter(claimID, globalJobID string) reconnect.LocateResult {
-	match := func(recClaim, recGJID string) bool {
-		if globalJobID != "" && recGJID == globalJobID {
-			return true
-		}
-		return claimID != "" && recClaim == claimID
+	if claimID == "" {
+		return reconnect.LocateResult{}
 	}
-	// Live: match by claim id (via the slot's current claim) or GlobalJobId.
-	for slotName, act := range c.activations {
-		gjMatch := globalJobID != "" && act.globalJID == globalJobID
-		cidMatch := false
-		if claimID != "" {
-			if s := c.byName[slotName]; s != nil {
-				if cl := s.Claim(); cl != nil && cl.ClaimID() == claimID {
-					cidMatch = true
-				}
-			}
+	match := func(recClaim, recGJID string) bool {
+		if globalJobID != "" && recGJID != globalJobID {
+			return false
 		}
-		if (gjMatch || cidMatch) && act.starterAddr != "" {
+		return subtle.ConstantTimeCompare([]byte(recClaim), []byte(claimID)) == 1
+	}
+	// Live: the slot's current claim must be the requested one.
+	for slotName, act := range c.activations {
+		s := c.byName[slotName]
+		if s == nil || act.starterAddr == "" {
+			continue
+		}
+		if cl := s.Claim(); cl != nil && match(cl.ClaimID(), act.globalJID) {
 			return reconnect.LocateResult{Found: true, StarterAddr: act.starterAddr}
 		}
 	}
