@@ -116,8 +116,7 @@ func (c *Core) doAdopt(ctx context.Context) {
 			LeaseDeadline: unixTime(rec.LeaseDeadline),
 			Entered:       unixTime(rec.Entered),
 		})
-		s.SetClaim(cl)
-		s.SetStateActivity("Claimed", activityOf(busy), unixTime(rec.Entered))
+		s.SetClaimState(cl, "Claimed", activityOf(busy), unixTime(rec.Entered))
 		adopted++
 		c.log.Info(logging.DestinationGeneral, "re-adopted claim",
 			"slot", rec.SlotName, "activity", activityOf(busy),

@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/PelicanPlatform/classad/classad"
+	"github.com/bbockelm/cedar/client"
+	"github.com/bbockelm/cedar/commands"
+	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
 	"github.com/bbockelm/golang-htcondor/config"
@@ -326,5 +331,162 @@ func TestRequestClaimWire(t *testing.T) {
 	}
 	if s.State() != "Unclaimed" {
 		t.Errorf("slot state after rejected stale claim = %q, want Unclaimed", s.State())
+	}
+}
+
+// TestQueryStartdAdsDuringClaim reads the slot's public ad while the event
+// loop claims and releases the slot: over QUERY_STARTD_ADS, served on cedar
+// handler goroutines, and directly (LiveSlots + PublicAd, what that handler
+// and the advertiser do) in tight loops that land between the loop's steps.
+// A Claimed slot's ad carries the claim's RemoteUser and ClientMachine, so
+// under -race it fails if the loop writes them unordered with the read, and
+// every ad must be consistent: a Claimed slot names its claim's user, an
+// Unclaimed one names none.
+func TestQueryStartdAdsDuringClaim(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	core, cache := newTestCore(t, 1, fmt.Sprintf("<%s>", ln.Addr().String()))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	core.Start(ctx)
+	defer core.Stop()
+
+	srv := cedarserver.New(&security.SecurityConfig{
+		AuthMethods:    []security.AuthMethod{security.AuthFS},
+		Authentication: security.SecurityOptional,
+		CryptoMethods:  []security.CryptoMethod{security.CryptoAES},
+		Encryption:     security.SecurityOptional,
+		SessionCache:   cache,
+	})
+	core.RegisterCommands(srv)
+	go func() { _ = srv.Serve(ctx, ln) }()
+
+	checkAd := func(ad *classad.ClassAd) error {
+		state, _ := ad.EvaluateAttrString("State")
+		user, _ := ad.EvaluateAttrString("RemoteUser")
+		if state == "Claimed" && user != "alice@example.net" {
+			return fmt.Errorf("Claimed slot ad has RemoteUser %q", user)
+		}
+		if state != "Claimed" && user != "" {
+			return fmt.Errorf("%s slot ad has RemoteUser %q", state, user)
+		}
+		return nil
+	}
+
+	const queriers, readers = 2, 2
+	readErr := make(chan error, queriers+readers)
+	stop := make(chan struct{})
+	var queries atomic.Int64
+	var wg sync.WaitGroup
+	reader := func(read func() ([]*classad.ClassAd, error)) {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			ads, err := read()
+			if err == nil {
+				for _, ad := range ads {
+					if err = checkAd(ad); err != nil {
+						break
+					}
+				}
+			}
+			if err != nil {
+				readErr <- err
+				return
+			}
+		}
+	}
+	for range queriers {
+		wg.Add(1)
+		go reader(func() ([]*classad.ClassAd, error) {
+			ads, err := queryStartdAds(ctx, ln.Addr().String())
+			if err != nil {
+				return nil, fmt.Errorf("QUERY_STARTD_ADS: %w", err)
+			}
+			queries.Add(1)
+			return ads, nil
+		})
+	}
+	for range readers {
+		wg.Add(1)
+		go reader(func() ([]*classad.ClassAd, error) {
+			var ads []*classad.ClassAd
+			for _, s := range core.LiveSlots() {
+				ads = append(ads, s.PublicAd())
+			}
+			return ads, nil
+		})
+	}
+
+	s := core.Slots()[0]
+	for i := 0; i < 300; i++ {
+		id := s.Claim().ClaimID()
+		if dec := requestViaLoop(t, core, id, fittingRequestAd(), "<10.0.0.9:1>", 10); !dec.accept {
+			t.Fatalf("cycle %d: claim request rejected", i)
+		}
+		core.Submit(evReleaseClaim{claimID: id})
+		// A request for an unknown claim, answered after the release.
+		requestViaLoop(t, core, "sync#0#0#none", fittingRequestAd(), "<10.0.0.9:1>", 10)
+	}
+	close(stop)
+	wg.Wait()
+	close(readErr)
+	if err := <-readErr; err != nil {
+		t.Fatal(err)
+	}
+	if queries.Load() == 0 {
+		t.Fatal("no QUERY_STARTD_ADS completed")
+	}
+}
+
+// queryStartdAds runs QUERY_STARTD_ADS against addr as an anonymous peer and
+// returns the slot ads.
+func queryStartdAds(ctx context.Context, addr string) ([]*classad.ClassAd, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cl, err := client.ConnectAndAuthenticate(ctx, addr, &security.SecurityConfig{
+		Command:        commands.QUERY_STARTD_ADS,
+		AuthMethods:    []security.AuthMethod{},
+		Authentication: security.SecurityNever,
+		Encryption:     security.SecurityNever,
+		Integrity:      security.SecurityNever,
+		SessionCache:   security.NewSessionCache(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = cl.Close() }()
+	m := message.NewMessageForStream(cl.GetStream())
+	q := classad.New()
+	_ = q.Set("Requirements", true)
+	if err := m.PutClassAd(ctx, q); err != nil {
+		return nil, err
+	}
+	if err := m.FinishMessage(ctx); err != nil {
+		return nil, err
+	}
+	in := message.NewMessageFromStream(cl.GetStream())
+	var out []*classad.ClassAd
+	for {
+		more, err := in.GetInt(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if more == 0 {
+			return out, nil
+		}
+		ad, err := in.GetClassAd(ctx)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, ad)
 	}
 }

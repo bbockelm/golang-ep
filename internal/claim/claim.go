@@ -281,7 +281,9 @@ type AcceptInfo struct {
 
 // Accept transitions an Unclaimed claim to Claimed/Idle, recording the schedd
 // identity and computing the initial lease deadline
-// (now + AlivesMissed*AliveInterval).
+// (now + AlivesMissed*AliveInterval). A slot's ads read the user and client
+// machine under the slot's lock, so a claim installed on a slot is accepted
+// through slot.Slot.AcceptClaim.
 func (c *Claim) Accept(info AcceptInfo) {
 	now := info.Now
 	if now.IsZero() {
