@@ -581,8 +581,9 @@ func (c *Core) RegisterCommands(srv *cedarserver.Server) {
 	srv.Handle(int(commands.GIVE_STATE), c.handleGiveState, "READ")
 	// CA_CMD/CA_LOCATE_STARTER (Stage 7): a reconnecting shadow, riding the claim
 	// session, asks where the starter for its job is. Answered from live +
-	// persisted claim state.
-	srv.Handle(reconnect.CACmd, reconnect.StartdHandler(c.locateStarter, c.log), "READ", "DAEMON")
+	// persisted claim state, keyed by the secret claim id. WRITE, as in the C++
+	// startd (startd_main.cpp Register_Command CA_CMD).
+	srv.Handle(reconnect.CACmd, reconnect.StartdHandler(c.locateStarter, c.log), "WRITE")
 	if c.minter != nil {
 		c.RegisterClaimCommands(srv)
 	}

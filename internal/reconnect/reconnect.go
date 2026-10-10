@@ -46,6 +46,9 @@ const (
 	CmdReconnectJob  = "CA_RECONNECT_JOB"
 	ResultSuccess    = "Success"
 	ResultFailure    = "Failure"
+	// ResultNotAuthorized is CA_NOT_AUTHORIZED's result string
+	// (command_strings.h); the C++ shadow treats it as a permanent refusal.
+	ResultNotAuthorized = "NotAuthorized"
 
 	// Request/reply attribute names.
 	AttrCommand       = "Command"
@@ -102,6 +105,13 @@ func FailureReply(errStr string) *classad.ClassAd {
 	if errStr != "" {
 		_ = ad.Set(AttrErrorString, errStr)
 	}
+	return ad
+}
+
+// NotAuthorizedReply builds a {Result:"NotAuthorized", ErrorString:...} reply.
+func NotAuthorizedReply(errStr string) *classad.ClassAd {
+	ad := FailureReply(errStr)
+	_ = ad.Set(AttrResult, ResultNotAuthorized)
 	return ad
 }
 
