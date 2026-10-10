@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/PelicanPlatform/classad v0.8.0
 	github.com/PelicanPlatform/classad/collections v0.8.0
-	github.com/bbockelm/cedar v0.6.1
+	github.com/bbockelm/cedar v0.7.4
 	github.com/bbockelm/golang-ap v0.0.0-20260712133627-64ae8d7636a0
 	github.com/bbockelm/golang-htcondor v0.8.1
 	golang.org/x/sys v0.47.0
