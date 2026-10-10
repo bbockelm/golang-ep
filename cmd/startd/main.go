@@ -23,10 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bbockelm/cedar/commands"
 	"github.com/bbockelm/cedar/security"
-	cedarserver "github.com/bbockelm/cedar/server"
-	htcondor "github.com/bbockelm/golang-htcondor"
 	"github.com/bbockelm/golang-htcondor/config"
 	"github.com/bbockelm/golang-htcondor/daemon"
 	"github.com/bbockelm/golang-htcondor/logging"
@@ -70,24 +67,11 @@ func run() error {
 	// Route cedar's security/server slog output into StartdLog.
 	slog.SetDefault(d.Slog())
 
-	// Server-side security policy from the HTCondor configuration (SEC_* knobs),
-	// so this startd authenticates and encrypts exactly like the C++ one.
-	sec, err := htcondor.GetServerSecurityConfig(d.Config(), commands.QUERY_STARTD_ADS, "DAEMON")
-	if err != nil {
-		return fmt.Errorf("building security config: %w", err)
-	}
-
 	// A SINGLE session cache shared by (a) the cedar server (inbound resumption:
 	// a schedd presenting a claim id resumes the pre-shared match session with no
 	// fresh DC_AUTHENTICATE), (b) the claim Minter (which registers each minted
 	// session here), and (c) the ALIVE loop (outbound resumption to the schedd).
 	sessionCache := security.NewSessionCache()
-	sec.SessionCache = sessionCache
-
-	srv := cedarserver.New(sec)
-	// DC_NOP / DC_RECONFIG / DC_OFF so condor_ping, condor_reconfig -daemon, and
-	// condor_off -daemon work against our command port.
-	d.RegisterDefaultCommands(srv)
 
 	// Command-socket listener: the shared-port endpoint inherited from
 	// condor_master if present, otherwise a plain TCP bind. Under USE_SHARED_PORT
@@ -100,6 +84,16 @@ func run() error {
 		return err
 	}
 	defer func() { _ = ln.Close() }()
+
+	// The command server: the SEC_* security policy from the HTCondor
+	// configuration, so this startd authenticates and encrypts exactly like the
+	// C++ one, each command negotiated at its own level; ALLOW_<level>/
+	// DENY_<level> authorization for every command (rebuilt on reconfig); and
+	// the DC_* defaults. Built after the listener, whose shared-port id it uses.
+	srv, az, err := newCommandServer(d, sessionCache)
+	if err != nil {
+		return fmt.Errorf("building command server: %w", err)
+	}
 
 	// The startd's externally reachable command sinful ("<host:port?sock=...>"),
 	// advertised as StartdIpAddr/MyAddress on every slot ad. Known only after the
@@ -200,7 +194,7 @@ func run() error {
 	log.Info(logging.DestinationGeneral, "golang-ep startd starting",
 		"listen", ln.Addr().String(), "under_master", d.UnderMaster(), "sinful", sinful)
 
-	return d.Serve(ctx, ln, srv.Serve)
+	return d.Serve(ctx, ln, serveCommands(srv, az, d.Slog()))
 }
 
 // fullHostname derives the machine name advertised in the slot ads.

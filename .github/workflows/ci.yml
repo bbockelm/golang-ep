@@ -57,7 +57,7 @@ jobs:
       # full HTCondor install plus the golang-ap/golang-collector binaries and
       # is run locally, not in CI. See README.
       - name: Unit tests
-        run: go test -race -count=1 ./internal/...
+        run: go test -race -count=1 ./internal/... ./cmd/...
 
   lint:
     name: Lint
