@@ -194,7 +194,7 @@ func run() error {
 	log.Info(logging.DestinationGeneral, "golang-ep startd starting",
 		"listen", ln.Addr().String(), "under_master", d.UnderMaster(), "sinful", sinful)
 
-	return d.Serve(ctx, ln, serveCommands(srv, az, d.Slog()))
+	return d.Serve(ctx, ln, az.Serve(srv, d.Slog()))
 }
 
 // fullHostname derives the machine name advertised in the slot ads.

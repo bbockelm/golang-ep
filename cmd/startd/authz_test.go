@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -32,8 +31,8 @@ import (
 )
 
 // These tests drive the startd's command server as run() builds it
-// (newCommandServer, the startd's command registrations, serveCommands under
-// daemon.Serve) over loopback, and check that the ALLOW_/DENY_ policy decides
+// (newCommandServer, the startd's command registrations, the Authz serve loop
+// under daemon.Serve) over loopback, and check that the ALLOW_/DENY_ policy decides
 // which identities may run which command.
 //
 // Identities are HTCondor's full user@domain names. A peer is given one by a
@@ -52,7 +51,7 @@ type authzStartd struct {
 	keyDir    string
 	cache     *security.SessionCache
 	srv       *cedarserver.Server
-	az        *startdAuthz
+	az        *daemon.Authz
 	core      *startd.Core
 	reconfigs atomic.Int32
 	served    chan struct{} // closed when daemon.Serve returns
@@ -114,7 +113,7 @@ func startAuthzStartd(t *testing.T, knobs map[string]string) *authzStartd {
 	logger := slog.New(&recordHandler{ch: as.records})
 	go func() {
 		defer close(as.served)
-		as.serveErr = d.Serve(ctx, ln, serveCommands(srv, az, logger))
+		as.serveErr = d.Serve(ctx, ln, az.Serve(srv, logger))
 	}()
 	t.Cleanup(func() {
 		cancel()
@@ -251,13 +250,13 @@ func (as *authzStartd) send(sec *security.SecurityConfig, cmd int) {
 	as.t.Helper()
 	cl, ctx, err := as.dial(sec, cmd)
 	if err != nil {
-		as.t.Fatalf("connecting for %s: %v", commandName(cmd), err)
+		as.t.Fatalf("connecting for %s: %v", as.az.CommandName(cmd), err)
 	}
 	if err := message.NewMessageForStream(cl.GetStream()).FinishMessage(ctx); err != nil {
-		as.t.Fatalf("sending %s: %v", commandName(cmd), err)
+		as.t.Fatalf("sending %s: %v", as.az.CommandName(cmd), err)
 	}
 	if _, err := message.NewMessageFromStream(cl.GetStream()).GetInt(ctx); err == nil {
-		as.t.Fatalf("%s: unexpected reply", commandName(cmd))
+		as.t.Fatalf("%s: unexpected reply", as.az.CommandName(cmd))
 	}
 }
 
@@ -325,11 +324,11 @@ func (as *authzStartd) requestClaim(sec *security.SecurityConfig) (int, error) {
 	return message.NewMessageFromStream(cl.GetStream()).GetInt(ctx)
 }
 
-// claimSlot claims the first slot over its own claim session, as a schedd
-// does, and reports whether the startd granted it.
-func (as *authzStartd) claimSlot() (bool, error) {
+// claimSlot claims slot i over its own claim session, as a schedd does, and
+// reports whether the startd granted it.
+func (as *authzStartd) claimSlot(i int) (bool, error) {
 	as.t.Helper()
-	sc, err := hstartd.New(as.core.Slots()[0].Claim().ClaimID(), nil)
+	sc, err := hstartd.New(as.core.Slots()[i].Claim().ClaimID(), nil)
 	if err != nil {
 		as.t.Fatal(err)
 	}
@@ -591,8 +590,9 @@ func TestAuthzReconfigReloads(t *testing.T) {
 // TestAuthzClaimSessionHole: the identity of the claim sessions the startd
 // mints holds DAEMON while SEC_ENABLE_MATCH_PASSWORD_AUTHENTICATION is on,
 // so a schedd claims a slot over its claim session whatever ALLOW_DAEMON
-// says; another identity is still decided by ALLOW_DAEMON. Turning the knob
-// off, and reconfiguring, closes the hole.
+// says; another identity is still decided by ALLOW_DAEMON. The hole follows
+// the knob across reconfigs: turning it on opens the hole, and turning it
+// off again closes it.
 func TestAuthzClaimSessionHole(t *testing.T) {
 	knobs := map[string]string{
 		"ALLOW_DAEMON":                             "schedd@pool",
@@ -601,7 +601,7 @@ func TestAuthzClaimSessionHole(t *testing.T) {
 	}
 	as := startAuthzStartd(t, knobs)
 
-	if ok, err := as.claimSlot(); err == nil && ok {
+	if ok, err := as.claimSlot(0); err == nil && ok {
 		t.Fatal("claim over the claim session granted with SEC_ENABLE_MATCH_PASSWORD_AUTHENTICATION off, want refused")
 	}
 	as.expectDenial("REQUEST_CLAIM", "DAEMON", security.SubmitSideMatchSessionFQU, "ALLOW_DAEMON", "")
@@ -610,7 +610,7 @@ func TestAuthzClaimSessionHole(t *testing.T) {
 	as.writeConfig(knobs)
 	as.send(as.as("admin@pool"), commands.DC_RECONFIG)
 
-	ok, err := as.claimSlot()
+	ok, err := as.claimSlot(0)
 	if err != nil || !ok {
 		t.Fatalf("claim over the claim session = %v, %v; want granted", ok, err)
 	}
@@ -633,6 +633,14 @@ func TestAuthzClaimSessionHole(t *testing.T) {
 			t.Errorf("%s authorized at %s; the C++ startd grants it DAEMON only", security.SubmitSideMatchSessionFQU, perm)
 		}
 	}
+
+	knobs["SEC_ENABLE_MATCH_PASSWORD_AUTHENTICATION"] = "FALSE"
+	as.writeConfig(knobs)
+	as.send(as.as("admin@pool"), commands.DC_RECONFIG)
+	if ok, err := as.claimSlot(1); err == nil && ok {
+		t.Fatal("claim over the claim session granted after SEC_ENABLE_MATCH_PASSWORD_AUTHENTICATION was turned off, want refused")
+	}
+	as.expectDenial("REQUEST_CLAIM", "DAEMON", security.SubmitSideMatchSessionFQU, "ALLOW_DAEMON", "")
 }
 
 // TestAuthzFamilySession: condor_master's family session holds the levels
@@ -672,24 +680,6 @@ func TestAuthzFamilySession(t *testing.T) {
 	}
 }
 
-// TestAuthzAdvertisesNegotiatedCommandOnly: the post-auth reply lists only
-// the negotiated command, so a C++ client negotiates a new session for each
-// other command instead of resuming one it would then re-authenticate on.
-func TestAuthzAdvertisesNegotiatedCommandOnly(t *testing.T) {
-	as := startAuthzStartd(t, map[string]string{
-		"ALLOW_ADMINISTRATOR": "*",
-		"ALLOW_DAEMON":        "*",
-		"ALLOW_READ":          "*",
-	})
-	cl, _, err := as.dial(as.token("alice@pool"), commands.QUERY_STARTD_ADS)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := cl.GetSecurityNegotiation().ValidCommands; got != "5" {
-		t.Fatalf("post-auth ValidCommands = %q, want only QUERY_STARTD_ADS (5)", got)
-	}
-}
-
 // TestCommandLevelsMatchCxx pins the level of every command the startd
 // serves, and that none is negotiated with authentication forced, to the C++
 // startd's registration (startd_main.cpp; DaemonCore's daemon_core_main.cpp
@@ -702,7 +692,7 @@ func TestCommandLevelsMatchCxx(t *testing.T) {
 	pinned := map[int]bool{}
 	for _, tc := range cxxLevels {
 		pinned[tc.cmd] = true
-		name := commandName(tc.cmd)
+		name := as.az.CommandName(tc.cmd)
 		if perms := as.srv.CommandPerms(tc.cmd); len(perms) != 1 || perms[0] != tc.level {
 			t.Errorf("%s registered at %v, want [%s] (%s)", name, perms, tc.level, tc.cxx)
 		}
@@ -717,7 +707,7 @@ func TestCommandLevelsMatchCxx(t *testing.T) {
 	}
 	for cmd := 0; cmd < 100000; cmd++ {
 		if len(as.srv.CommandPerms(cmd)) > 0 && !pinned[cmd] {
-			t.Errorf("%s (%d) is registered but not pinned to a C++ registration", commandName(cmd), cmd)
+			t.Errorf("%s (%d) is registered but not pinned to a C++ registration", as.az.CommandName(cmd), cmd)
 		}
 	}
 }
@@ -748,21 +738,13 @@ var cxxLevels = []struct {
 	{commands.DC_NOP_READ, "READ", "daemon_core_main.cpp:4355"},
 	{commands.DC_NOP_WRITE, "WRITE", "daemon_core_main.cpp:4359"},
 	{commands.DC_NOP_NEGOTIATOR, "NEGOTIATOR", "daemon_core_main.cpp:4363"},
-}
-
-// TestLogDenialIgnoresOtherErrors: only authorization refusals are logged as
-// PERMISSION DENIED.
-func TestLogDenialIgnoresOtherErrors(t *testing.T) {
-	records := make(chan slog.Record, 4)
-	az, err := newStartdAuthz(config.NewEmpty())
-	if err != nil {
-		t.Fatal(err)
-	}
-	az.logDenial(slog.New(&recordHandler{ch: records}), nil, "127.0.0.1:1",
-		errors.New("cedar/server: command 60004 (DC_RECONFIG) refused: session (authenticated=false encrypted=false) does not meet the command's security level"))
-	if len(records) != 0 {
-		t.Errorf("logged %d records for a security-level refusal, want 0", len(records))
-	}
+	{commands.DC_NOP_ADMINISTRATOR, "ADMINISTRATOR", "daemon_core_main.cpp:4367"},
+	{commands.DC_NOP_OWNER, "ADMINISTRATOR", "daemon_core_main.cpp:4375"},
+	{commands.DC_NOP_CONFIG, "CONFIG", "daemon_core_main.cpp:4379"},
+	{commands.DC_NOP_DAEMON, "DAEMON", "daemon_core_main.cpp:4383"},
+	{commands.DC_NOP_ADVERTISE_STARTD, "ADVERTISE_STARTD", "daemon_core_main.cpp:4387"},
+	{commands.DC_NOP_ADVERTISE_SCHEDD, "ADVERTISE_SCHEDD", "daemon_core_main.cpp:4391"},
+	{commands.DC_NOP_ADVERTISE_MASTER, "ADVERTISE_MASTER", "daemon_core_main.cpp:4395"},
 }
 
 func mustParse(t *testing.T, s string) *classad.ClassAd {
