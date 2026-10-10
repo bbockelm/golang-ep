@@ -212,6 +212,8 @@ type ActivateMsg struct {
 // MarshalActivate encodes an ActivateMsg as the codec's ClassAd. The embedded
 // job/slot ads travel as unparsed new-ClassAd strings (round-tripped through
 // classad.Parse) so the codec stays [int, ClassAd, EOM] with no nesting.
+// Rendering mutates the job/slot ads' internal state, so the caller must not
+// run it concurrently with any other use of those ads.
 func MarshalActivate(a *ActivateMsg) *classad.ClassAd {
 	ad := classad.New()
 	_ = ad.Set("SandboxDir", a.SandboxDir)

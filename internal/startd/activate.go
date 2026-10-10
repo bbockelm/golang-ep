@@ -389,11 +389,15 @@ func (c *Core) doActivateClaim(ctx context.Context, ev evActivateClaim) {
 		globalJID: adString(ev.jobAd, "GlobalJobId"),
 		gen:       c.activationGen,
 	}
-	activateMsg := &starter.ActivateMsg{
+	// Render the Activate payload here, on the loop. ev.jobAd stays loop-owned
+	// (act.jobAd, rendered again by persistSlot) and a ClassAd is not safe for
+	// concurrent use: rendering one sorts its attributes and rebuilds its index
+	// in place. The supervisor goroutine gets only this freshly built ad.
+	activateAd := starter.MarshalActivate(&starter.ActivateMsg{
 		JobAd:      ev.jobAd,
 		SlotAd:     s.PublicAd(),
 		SandboxDir: sandbox,
-	}
+	})
 
 	// STARTER_MODE decides how the starter runs: an in-process goroutine
 	// (default) or a separate condor_starter process the startd spawns, dials
@@ -438,7 +442,7 @@ func (c *Core) doActivateClaim(ctx context.Context, ev evActivateClaim) {
 		}()
 	}
 
-	go c.superviseStarter(actx, slotName, act, activateMsg, false)
+	go c.superviseStarter(actx, slotName, act, activateAd, false)
 
 	now := time.Now()
 	cl.SetBusy(now)
@@ -523,8 +527,9 @@ func errString(err error) string {
 // sends Activate, relays vacate requests from the loop, and turns the
 // starter's Hello/Update/Final/Exited into loop events. It is the only WRITER
 // on the startd's control end (a dedicated sub-goroutine is the only reader),
-// so pipe-backed control cannot deadlock.
-func (c *Core) superviseStarter(ctx context.Context, slotName string, act *activation, msg *starter.ActivateMsg, reattach bool) {
+// so pipe-backed control cannot deadlock. activateAd is the already-marshalled
+// Activate message (nil on reattach); the supervisor must be its only user.
+func (c *Core) superviseStarter(ctx context.Context, slotName string, act *activation, activateAd *classad.ClassAd, reattach bool) {
 	exited := func() { c.Submit(evStarterExited{slotName: slotName}) }
 	// On the re-adoption path a redial/Reattach failure means the surviving
 	// starter is gone: run the .exit-marker recovery instead of the normal
@@ -561,7 +566,7 @@ func (c *Core) superviseStarter(ctx context.Context, slotName string, act *activ
 		c.log.Info(logging.DestinationGeneral, "re-adopted starter: Reattach sent, awaiting Hello",
 			"slot", slotName, "socket", act.socketPath)
 	} else {
-		if err := starter.WriteMessage(ctx, ctrl, starter.MsgActivate, starter.MarshalActivate(msg)); err != nil {
+		if err := starter.WriteMessage(ctx, ctrl, starter.MsgActivate, activateAd); err != nil {
 			c.log.Warn(logging.DestinationGeneral, "sending Activate to starter failed",
 				"slot", slotName, "err", err.Error())
 			exited()
