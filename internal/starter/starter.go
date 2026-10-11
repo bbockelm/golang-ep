@@ -53,6 +53,35 @@ func getJobInfoWithSecrets(ctx context.Context, st *stream.Stream, log *logging.
 	return ad, nil
 }
 
+// reconnectReplyTimeout bounds how long Run waits for the CA_RECONNECT_JOB
+// handler to finish writing its Success reply before abandoning the handoff.
+const reconnectReplyTimeout = 30 * time.Second
+
+// acceptReconnect accepts a CA_RECONNECT_JOB handoff and waits until the
+// handler has written and flushed its Success reply on ho.stream. Only then may
+// the caller use the stream: until replied fires the handler is still writing on
+// it, and a syscall sent in that window would interleave with the reply. A
+// non-nil return means the handoff is abandoned; the caller keeps its current
+// syscall socket, and ho.stream is closed so a handler still blocked writing on
+// it gives up.
+func acceptReconnect(ctx context.Context, ho *reconnectHandoff) error {
+	ho.ack <- nil
+	timer := time.NewTimer(reconnectReplyTimeout)
+	defer timer.Stop()
+	var err error
+	select {
+	case err = <-ho.replied:
+	case <-ctx.Done():
+		err = ctx.Err()
+	case <-timer.C:
+		err = fmt.Errorf("no CA_RECONNECT_JOB reply after %s", reconnectReplyTimeout)
+	}
+	if err != nil {
+		_ = ho.stream.Close()
+	}
+	return err
+}
+
 // DefaultUpdateInterval is the periodic Update / register_job_info cadence
 // (STARTER_UPDATE_INTERVAL's stock default).
 const DefaultUpdateInterval = 300 * time.Second
@@ -462,10 +491,17 @@ func Run(ctx context.Context, t StarterSide, opts Options) error {
 		case ho := <-reconnectCh:
 			// CA_RECONNECT_JOB: a reconnecting shadow handed us a fresh syscall
 			// socket (the connection it dialed) plus new transfer route material.
-			// Swap our remote-syscall client onto it and re-point file transfer, so
-			// the rest of the job's syscalls (register_job_info, output transfer,
-			// job_exit) go to the reconnecting shadow. The old socket (to the
-			// vanished shadow) is dropped.
+			// Once the handler's Success reply is on the wire, swap our
+			// remote-syscall client onto it and re-point file transfer, so the rest
+			// of the job's syscalls (register_job_info, output transfer, job_exit)
+			// go to the reconnecting shadow. The old socket (to the vanished shadow)
+			// is dropped. If the reply never made it, the handoff is abandoned and
+			// the old socket stays.
+			if herr := acceptReconnect(ctx, ho); herr != nil {
+				log.Warn(logging.DestinationGeneral, "reconnect handoff abandoned; keeping the current syscall socket",
+					"shadow", ho.shadowAddr, "err", herr.Error())
+				continue
+			}
 			old := sysSt
 			sysSt = ho.stream
 			cli = syscalls.NewClient(sysSt)
@@ -482,7 +518,6 @@ func Run(ctx context.Context, t StarterSide, opts Options) error {
 			}
 			log.Info(logging.DestinationGeneral, "reconnected: swapped remote-syscall socket to new shadow",
 				"shadow", ho.shadowAddr, "transfer_socket", ho.transferSocket)
-			ho.ack <- nil
 		case <-ticker.C:
 			upd := buildUpdateAd(jp.pid, jp.startTime)
 			sendCtrl(ctx, MsgUpdate, upd)

@@ -474,11 +474,22 @@ func waitForStarterPidExcluding(t *testing.T, startdLog string, exclude int, tim
 	return 0
 }
 
+// assertExitMarker waits (up to 30s) for the starter to write the sandbox .exit
+// marker, then checks it. The starter writes the marker after Run returns,
+// which is after job_exit reaches the shadow, so it can lag the shadow's result.
+// The write is atomic (rename), so the first successful read is the whole file.
 func assertExitMarker(t *testing.T, sandbox string, wantStatus, wantReason int) {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(sandbox, ".exit"))
+	const timeout = 30 * time.Second
+	path := filepath.Join(sandbox, ".exit")
+	deadline := time.Now().Add(timeout)
+	data, err := os.ReadFile(path)
+	for err != nil && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		data, err = os.ReadFile(path)
+	}
 	if err != nil {
-		t.Fatalf(".exit marker not written to sandbox %s: %v", sandbox, err)
+		t.Fatalf(".exit marker not written to sandbox %s within %s: %v", sandbox, timeout, err)
 	}
 	var m struct {
 		WaitpidStatus int `json:"waitpid_status"`
