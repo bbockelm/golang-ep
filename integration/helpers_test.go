@@ -82,3 +82,13 @@ func dumpLog(t *testing.T, path string) {
 		t.Logf("(could not read %s: %v)", path, err)
 	}
 }
+
+// dumpStarterLogs logs every process starter's log, which the startd writes
+// next to the starter's control socket in sockDir.
+func dumpStarterLogs(t *testing.T, sockDir string) {
+	t.Helper()
+	logs, _ := filepath.Glob(filepath.Join(sockDir, "*.starterlog"))
+	for _, path := range logs {
+		dumpLog(t, path)
+	}
+}

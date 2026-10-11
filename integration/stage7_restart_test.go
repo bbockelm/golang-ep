@@ -124,6 +124,7 @@ SEC_DEFAULT_CRYPTO_METHODS = AES
 		for _, name := range []string{"StartdLog", "MasterLog", "CollectorLog"} {
 			dumpLog(t, filepath.Join(logDir, name))
 		}
+		dumpStarterLogs(t, sockDir)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
