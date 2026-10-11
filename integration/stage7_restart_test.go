@@ -155,6 +155,10 @@ SEC_DEFAULT_CRYPTO_METHODS = AES
 		t.Fatal("file-transfer endpoint never reported its sinful address")
 	}
 
+	// caClaimID is the claim the CA variant used. Its reconnected shadow releases
+	// it, so the restart variant must wait for the startd's re-minted claim.
+	var caClaimID string
+
 	// =====================================================================
 	// Variant 1: CA reconnect path (detach + shadow-driven reconnect).
 	// =====================================================================
@@ -164,6 +168,7 @@ SEC_DEFAULT_CRYPTO_METHODS = AES
 			dumpAllLogs()
 			t.Fatal("no ClaimId for CA reconnect variant")
 		}
+		caClaimID = claimID
 		stub := newStubSchedd(t, claimID, aliveInterval)
 		iwd, jobAd := stage4TransferJobAd(t, whoami, "hello-reconnect", 25)
 
@@ -264,11 +269,10 @@ SEC_DEFAULT_CRYPTO_METHODS = AES
 	// Variant 2: startd restart (kill -9 + master restart + re-adoption).
 	// =====================================================================
 	t.Run("StartdRestart", func(t *testing.T) {
-		claimID, slotName := waitForFreshClaimID(t, ctx, h.GetCollectorAddr(), "", "", 40*time.Second)
-		if claimID == "" {
-			// Any claim id works if no prior one to exclude.
-			claimID, slotName = waitForPrivateClaimID(t, ctx, h.GetCollectorAddr(), "", 40*time.Second)
-		}
+		// The collector can still hold the private ad carrying the CA variant's
+		// released claim; claiming with that id is refused. Wait for a different
+		// one.
+		claimID, slotName := waitForFreshClaimID(t, ctx, h.GetCollectorAddr(), "", caClaimID, 40*time.Second)
 		if claimID == "" {
 			dumpAllLogs()
 			t.Fatal("no ClaimId for restart variant")
