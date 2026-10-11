@@ -88,6 +88,10 @@ func (t *inprocStartd) Control() *stream.Stream { return t.ctrl }
 // delivered the *stream.Stream pointer through the syscall channel.
 func (t *inprocStartd) FinishActivation(context.Context) error { return nil }
 
+// ReleaseSyscallConn is a no-op for goroutine mode: the starter owns the one
+// stream PassSyscallConn delivered.
+func (t *inprocStartd) ReleaseSyscallConn() {}
+
 func (t *inprocStartd) PassSyscallConn(st *stream.Stream) error {
 	if err := t.shared.markPassed(); err != nil {
 		return err

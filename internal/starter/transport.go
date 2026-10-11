@@ -54,6 +54,15 @@ type Transport interface {
 	// The supervisor calls it immediately after Activate so all control-channel
 	// writes stay on one goroutine. Honors ctx cancellation.
 	FinishActivation(ctx context.Context) error
+	// ReleaseSyscallConn drops the startd's own reference to the ACTIVATE
+	// connection once the starter has adopted it. Process mode keeps that
+	// reference open after the SCM_RIGHTS send: a socket whose only reference
+	// is in flight on a Unix socket can be flushed by the kernel's descriptor
+	// garbage collector (macOS marks its receive side shut, so the starter
+	// reads EOF on the live connection). The supervisor calls it on the
+	// starter's first control message; Close also releases it. Goroutine mode
+	// holds no separate reference (no-op). Idempotent.
+	ReleaseSyscallConn()
 	Close() error
 }
 

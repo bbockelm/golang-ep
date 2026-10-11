@@ -124,6 +124,9 @@ type unixStartd struct {
 	pending chan passReq // buffered 1; PassSyscallConn -> FinishActivation
 	passed  bool
 	closed  bool
+	// handedOff is the startd's copy of the ACTIVATE connection after its fd was
+	// sent, held until ReleaseSyscallConn or Close (see ReleaseSyscallConn).
+	handedOff *stream.Stream
 }
 
 // NewUnixStartd builds the startd's disconnected process-mode transport for the
@@ -208,8 +211,10 @@ func (u *unixStartd) PassSyscallConn(st *stream.Stream) error {
 // FinishActivation waits for PassSyscallConn, then frames MsgSyscallConnFollows
 // (carrying the crypto blob) and SCM_RIGHTS-passes the syscall TCP fd on the
 // same Unix socket -- all on the supervisor goroutine, serialized after Activate.
-// The startd's copy of the ACTIVATE connection is closed once the fd is passed
-// (the starter holds its own dup via SCM_RIGHTS).
+// The startd keeps its copy of the ACTIVATE connection open until
+// ReleaseSyscallConn (the starter has adopted it) or Close: closing it while the
+// fd is still in flight would leave the in-flight reference as the socket's
+// only one, which the kernel's descriptor GC may flush.
 func (u *unixStartd) FinishActivation(ctx context.Context) error {
 	var req passReq
 	select {
@@ -233,13 +238,32 @@ func (u *unixStartd) FinishActivation(ctx context.Context) error {
 	sendErr := rawConnWithFd(req.st.GetConnection(), func(fd uintptr) error {
 		return sharedport.SendForwardedConn(ctx, conn, fd)
 	})
-	// The fd is now dup'd into the starter; drop the startd's reference so only
-	// the starter holds the shadow socket.
-	_ = req.st.Close()
 	if sendErr != nil {
+		_ = req.st.Close()
 		return fmt.Errorf("starter: SCM_RIGHTS-passing syscall fd: %w", sendErr)
 	}
+	u.mu.Lock()
+	if u.closed {
+		u.mu.Unlock()
+		_ = req.st.Close()
+		return nil
+	}
+	u.handedOff = req.st
+	u.mu.Unlock()
 	return nil
+}
+
+// ReleaseSyscallConn closes the startd's copy of the passed ACTIVATE connection.
+// Call it once the starter has the fd (its first control message proves that),
+// so that only the starter and the shadow hold the socket.
+func (u *unixStartd) ReleaseSyscallConn() {
+	u.mu.Lock()
+	st := u.handedOff
+	u.handedOff = nil
+	u.mu.Unlock()
+	if st != nil {
+		_ = st.Close()
+	}
 }
 
 func (u *unixStartd) Close() error {
@@ -249,11 +273,16 @@ func (u *unixStartd) Close() error {
 		return nil
 	}
 	u.closed = true
-	// Drain a stashed-but-unsent pass so its socket does not leak.
+	// Drain a stashed-but-unsent pass so its socket does not leak, and drop a
+	// still-held copy of a passed one.
 	select {
 	case req := <-u.pending:
 		_ = req.st.Close()
 	default:
+	}
+	if u.handedOff != nil {
+		_ = u.handedOff.Close()
+		u.handedOff = nil
 	}
 	if u.conn != nil {
 		return u.conn.Close()
