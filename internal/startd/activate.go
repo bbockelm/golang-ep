@@ -607,6 +607,10 @@ func (c *Core) superviseStarter(ctx context.Context, slotName string, act *activ
 		}
 	}()
 
+	// The startd holds its copy of the passed syscall connection until the
+	// starter has adopted it; any control message from the starter proves that
+	// (Run sends nothing before it has the syscall connection).
+	released := false
 	for {
 		select {
 		case typ := <-act.vacateCh:
@@ -618,6 +622,10 @@ func (c *Core) superviseStarter(ctx context.Context, slotName string, act *activ
 			if !ok {
 				exited()
 				return
+			}
+			if !released {
+				act.transport.ReleaseSyscallConn()
+				released = true
 			}
 			switch m.typ {
 			case starter.MsgHello:

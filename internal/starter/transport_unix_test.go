@@ -5,10 +5,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/bbockelm/cedar/stream"
+	"github.com/bbockelm/golang-htcondor/logging"
 )
 
 // encryptedPeers returns two cedar streams over a real TCP connection (so they
@@ -169,6 +171,112 @@ func TestUnixTransportSyscallHandoff(t *testing.T) {
 		if got[i] != big[i] {
 			t.Fatalf("rebuilt big recv mismatch at %d", i)
 		}
+	}
+}
+
+// collectUnixGarbage closes Unix socketpairs with descriptors in flight, which
+// makes the kernel run its in-flight descriptor garbage collector.
+func collectUnixGarbage(t *testing.T, rounds int) {
+	t.Helper()
+	for i := 0; i < rounds; i++ {
+		p, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+		if err != nil {
+			t.Fatalf("socketpair: %v", err)
+		}
+		q, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+		if err != nil {
+			t.Fatalf("socketpair: %v", err)
+		}
+		_ = syscall.Sendmsg(p[0], []byte{0}, syscall.UnixRights(q[0]), nil, 0)
+		for _, fd := range []int{q[0], q[1], p[0], p[1]} {
+			_ = syscall.Close(fd)
+		}
+	}
+}
+
+// connOpen reports whether c's fd is still open in this process.
+func connOpen(c net.Conn) bool {
+	return rawConnWithFd(c, func(uintptr) error { return nil }) == nil
+}
+
+// TestUnixTransportHoldsPassedConnUntilReleased: the startd keeps its copy of
+// the ACTIVATE connection open after the SCM_RIGHTS send until
+// ReleaseSyscallConn. While the fd is in flight, other Unix sockets with
+// descriptors in flight are closed (which runs the kernel's descriptor GC); the
+// starter must still receive a live connection. On macOS, a socket whose only
+// reference is in flight comes out of that GC with its receive side shut, so the
+// starter reads EOF.
+func TestUnixTransportHoldsPassedConnUntilReleased(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	peerA, peerB := encryptedPeers(t)
+
+	// Stand in for the starter's listener so the test decides when the fd is
+	// received.
+	sock := filepath.Join(shortTempDir(t), "h.sock")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	accCh := make(chan *net.UnixConn, 1)
+	go func() {
+		c, aerr := ln.AcceptUnix()
+		if aerr != nil {
+			accCh <- nil
+			return
+		}
+		accCh <- c
+	}()
+
+	u := NewUnixStartd(sock)
+	if err := u.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = u.Close() }()
+	conn := <-accCh
+	if conn == nil {
+		t.Fatal("accept failed")
+	}
+	defer func() { _ = conn.Close() }()
+
+	if err := u.PassSyscallConn(peerA); err != nil {
+		t.Fatalf("PassSyscallConn: %v", err)
+	}
+	if err := u.FinishActivation(ctx); err != nil {
+		t.Fatalf("FinishActivation: %v", err)
+	}
+	if !connOpen(peerA.GetConnection()) {
+		t.Fatal("startd closed its copy of the ACTIVATE connection while the fd was in flight")
+	}
+
+	// The fd is in flight; run the descriptor GC.
+	collectUnixGarbage(t, 200)
+
+	// Receive it the way the starter's relay does.
+	typ, ad, err := ReadMessage(ctx, stream.NewStream(conn))
+	if err != nil || typ != MsgSyscallConnFollows {
+		t.Fatalf("read SyscallConnFollows = %s, %v", MsgName(typ), err)
+	}
+	log, _ := logging.New(nil)
+	side := &unixStarter{log: log, syscallCh: make(chan *stream.Stream, 1)}
+	if err := side.receiveSyscallConn(ad, conn); err != nil {
+		t.Fatalf("receiveSyscallConn: %v", err)
+	}
+	rebuilt := <-side.syscallCh
+	defer func() { _ = rebuilt.Close() }()
+
+	u.ReleaseSyscallConn()
+	if connOpen(peerA.GetConnection()) {
+		t.Error("ReleaseSyscallConn left the startd's copy open")
+	}
+
+	if err := peerB.SendMessage(ctx, []byte("after-handoff")); err != nil {
+		t.Fatalf("peerB send: %v", err)
+	}
+	if got, err := rebuilt.ReceiveFrame(ctx); err != nil || string(got) != "after-handoff" {
+		t.Fatalf("received syscall conn read = %q, %v; want after-handoff", got, err)
 	}
 }
 

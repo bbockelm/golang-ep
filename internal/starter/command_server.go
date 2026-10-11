@@ -3,6 +3,7 @@ package starter
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -58,18 +59,33 @@ type commandServer struct {
 	// handler never blocks the cedar server goroutine indefinitely.
 	reconnectCh chan *reconnectHandoff
 
+	// beforeReply, if set, runs in handleCACmd after Run accepted a handoff and
+	// before the Success reply is written. Tests use it to widen that window.
+	beforeReply func()
+
 	closeOnce sync.Once
 }
 
+// errHandoffAbandoned is delivered on reconnectHandoff.replied when the handler
+// gave up before writing the Success reply (its context ended first).
+var errHandoffAbandoned = errors.New("starter: CA_RECONNECT_JOB handler ended before replying")
+
 // reconnectHandoff is one accepted CA_RECONNECT_JOB: the connection that becomes
 // the new remote-syscall socket plus the fresh transfer route the shadow handed
-// over. Run acks it (nil = accepted, error = refused) so the handler can reply.
+// over. Run acks it (nil = accepted, error = refused) so the handler can reply,
+// then waits on replied before touching the stream: the handler is still
+// writing the Success reply on it, and the swapped-in socket must not carry a
+// syscall until that reply is fully on the wire.
 type reconnectHandoff struct {
 	stream         *stream.Stream
 	transferKey    string
 	transferSocket string
 	shadowAddr     string
 	ack            chan error
+	// replied receives exactly one value once the handler is done with the
+	// stream: nil after the Success reply was written and flushed, otherwise
+	// why there was none. Buffered so the handler never blocks on it.
+	replied chan error
 }
 
 // newCommandServer builds and starts the starter's CA command server on an
@@ -187,8 +203,9 @@ func (cs *commandServer) handleCACmd(ctx context.Context, c *cedarserver.Conn) e
 	}
 
 	ho := &reconnectHandoff{
-		stream: c.Stream,
-		ack:    make(chan error, 1),
+		stream:  c.Stream,
+		ack:     make(chan error, 1),
+		replied: make(chan error, 1),
 	}
 	ho.transferKey, _ = req.EvaluateAttrString(reconnect.AttrTransferKey)
 	ho.transferSocket, _ = req.EvaluateAttrString(reconnect.AttrTransferSock)
@@ -203,6 +220,12 @@ func (cs *commandServer) handleCACmd(ctx context.Context, c *cedarserver.Conn) e
 		return reconnect.WriteReply(ctx, c.Stream, reconnect.FailureReply("no running job to reconnect"))
 	}
 
+	// Run now owns the other end of the handoff and, once it accepts, waits on
+	// replied before using the stream. Every return from here reports, so Run
+	// is never left waiting.
+	replyErr := errHandoffAbandoned
+	defer func() { ho.replied <- replyErr }()
+
 	// Wait for Run to accept (swap its syscall socket) or refuse.
 	var ackErr error
 	select {
@@ -214,14 +237,19 @@ func (cs *commandServer) handleCACmd(ctx context.Context, c *cedarserver.Conn) e
 		return reconnect.WriteReply(ctx, c.Stream, reconnect.FailureReply(ackErr.Error()))
 	}
 
-	// Success: publish starter info and KEEP the connection open -- it is now the
-	// job's new remote-syscall socket, which Run has adopted.
+	// Success: publish starter info and KEEP the connection open -- it becomes
+	// the job's new remote-syscall socket once Run sees replied.
 	reply := reconnect.SuccessReply()
 	_ = reply.Set(reconnect.AttrStarterIPAddr, cs.Sinful())
 	_ = reply.Set("CondorVersion", starterCondorVersion)
+	if cs.beforeReply != nil {
+		cs.beforeReply()
+	}
 	if err := reconnect.WriteReply(ctx, c.Stream, reply); err != nil {
+		replyErr = err
 		return err
 	}
+	replyErr = nil
 	return cedarserver.KeepOpen()
 }
 

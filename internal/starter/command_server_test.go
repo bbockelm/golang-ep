@@ -18,28 +18,40 @@ import (
 )
 
 // reconnectFixture is a starter command server plus a stand-in for Run that
-// accepts every handoff it is offered (as Run does) and records it, so a test
-// observes directly whether the job's syscall socket was handed to the caller.
+// accepts every handoff it is offered (as Run does, via acceptReconnect) and
+// records it, so a test observes directly whether the job's syscall socket was
+// handed to the caller. handoffs records every offer (before the accept);
+// adopted carries each handoff once Run may use its stream.
 type reconnectFixture struct {
 	cs       *commandServer
 	handoffs chan *reconnectHandoff
+	adopted  chan *reconnectHandoff
 }
 
-func newReconnectFixture(t *testing.T, ctx context.Context) *reconnectFixture {
+// newReconnectFixture builds the fixture. beforeReply, if non-nil, is installed
+// as the command server's hook between Run's accept and the Success reply.
+func newReconnectFixture(t *testing.T, ctx context.Context, beforeReply func()) *reconnectFixture {
 	t.Helper()
 	log, _ := logging.New(nil)
 	cs, err := newCommandServer(ctx, "127.0.0.1:0", log)
 	if err != nil {
 		t.Fatalf("newCommandServer: %v", err)
 	}
+	cs.beforeReply = beforeReply
 	t.Cleanup(func() { _ = cs.Close() })
-	f := &reconnectFixture{cs: cs, handoffs: make(chan *reconnectHandoff, 4)}
+	f := &reconnectFixture{
+		cs:       cs,
+		handoffs: make(chan *reconnectHandoff, 4),
+		adopted:  make(chan *reconnectHandoff, 4),
+	}
 	go func() {
 		for {
 			select {
 			case ho := <-cs.reconnectCh:
-				f.handoffs <- ho // recorded before the ack, so before the reply
-				ho.ack <- nil
+				f.handoffs <- ho // recorded before the accept, so before the reply
+				if acceptReconnect(ctx, ho) == nil {
+					f.adopted <- ho
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -156,7 +168,7 @@ func sendReconnect(ctx context.Context, st *stream.Stream) (*classad.ClassAd, er
 func TestReconnectJobSwapsSyscallSocket(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	f := newReconnectFixture(t, ctx)
+	f := newReconnectFixture(t, ctx, nil)
 	claimID := mintClaim(t, 1)
 	f.register(t, claimID)
 
@@ -193,6 +205,13 @@ func TestReconnectJobSwapsSyscallSocket(t *testing.T) {
 		t.Errorf("handoff shadowAddr = %q", ho.shadowAddr)
 	}
 
+	// Run may use the stream only once the reply is written.
+	select {
+	case ho = <-f.adopted:
+	case <-ctx.Done():
+		t.Fatal("Run never adopted the reconnect handoff")
+	}
+
 	// Prove the swapped socket is a live syscall channel: the "starter" (Run's
 	// stand-in, now owning ho.stream) sends a starter->shadow message and the
 	// shadow reads it off the very connection it dialed with.
@@ -210,6 +229,85 @@ func TestReconnectJobSwapsSyscallSocket(t *testing.T) {
 	}
 	if got != 4242 {
 		t.Errorf("probe over swapped socket = %d, want 4242", got)
+	}
+}
+
+// TestReconnectJobReplyPrecedesSyscalls: Run must not use the handed-off
+// stream until the handler's Success reply is on the wire, or a syscall it
+// sends interleaves with (here: lands ahead of) the reply. The hook holds the
+// reply back until Run's stand-in has written a probe on the adopted stream, or
+// 200ms pass; the shadow must read the Success reply first, then the probe.
+func TestReconnectJobReplyPrecedesSyscalls(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	probeSent := make(chan struct{})
+	f := newReconnectFixture(t, ctx, func() {
+		select {
+		case <-probeSent:
+		case <-time.After(200 * time.Millisecond):
+		}
+	})
+	claimID := mintClaim(t, 1)
+	f.register(t, claimID)
+
+	probeErr := make(chan error, 1)
+	go func() {
+		defer close(probeSent)
+		select {
+		case ho := <-f.adopted:
+			out := message.NewMessageForStream(ho.stream)
+			err := out.PutInt(ctx, 4242)
+			if err == nil {
+				err = out.FinishMessage(ctx)
+			}
+			probeErr <- err
+		case <-ctx.Done():
+			probeErr <- ctx.Err()
+		}
+	}()
+
+	hc, err := dialClaim(ctx, f.cs.Sinful(), claimID)
+	if err != nil {
+		t.Fatalf("shadow ConnectAndAuthenticate: %v", err)
+	}
+	defer func() { _ = hc.Close() }()
+	st := hc.GetStream()
+
+	reply, err := sendReconnect(ctx, st)
+	if err != nil {
+		t.Fatalf("CA_RECONNECT_JOB exchange (a syscall frame arrived ahead of the reply?): %v", err)
+	}
+	if r, _ := reply.EvaluateAttrString(reconnect.AttrResult); r != reconnect.ResultSuccess {
+		t.Fatalf("CA reply Result = %q, want Success (reply ad: %v)", r, reply)
+	}
+	if err := <-probeErr; err != nil {
+		t.Fatalf("starter probe send: %v", err)
+	}
+	got, err := message.NewMessageFromStream(st).GetInt(ctx)
+	if err != nil {
+		t.Fatalf("shadow read probe after the reply: %v", err)
+	}
+	if got != 4242 {
+		t.Errorf("probe after the reply = %d, want 4242", got)
+	}
+}
+
+// TestReconnectJobAbandonedWithoutReply: if the handler never writes its
+// Success reply, Run's accept reports the handoff abandoned (so Run keeps its
+// old syscall socket) instead of adopting the stream.
+func TestReconnectJobAbandonedWithoutReply(t *testing.T) {
+	st, _ := newStreamPipe()
+	ho := &reconnectHandoff{
+		stream:  st,
+		ack:     make(chan error, 1),
+		replied: make(chan error, 1),
+	}
+	ho.replied <- errHandoffAbandoned
+	if err := acceptReconnect(context.Background(), ho); err == nil {
+		t.Fatal("acceptReconnect adopted a handoff whose reply was never written")
+	}
+	if err := <-ho.ack; err != nil {
+		t.Errorf("ack = %v, want nil (accepted)", err)
 	}
 }
 
@@ -236,7 +334,7 @@ func TestReconnectJobRequiresReconnectSession(t *testing.T) {
 	t.Run("fresh authenticated handshake", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		f := newReconnectFixture(t, ctx)
+		f := newReconnectFixture(t, ctx, nil)
 		f.register(t, mintClaim(t, 1))
 		hc, err := dialFS(ctx, f.cs.Sinful())
 		expectNotAuthorized(t, hc, err)
@@ -246,7 +344,7 @@ func TestReconnectJobRequiresReconnectSession(t *testing.T) {
 	t.Run("no reconnect session registered", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		f := newReconnectFixture(t, ctx)
+		f := newReconnectFixture(t, ctx, nil)
 		hc, err := dialFS(ctx, f.cs.Sinful())
 		expectNotAuthorized(t, hc, err)
 		f.assertNoHandoff(t)
@@ -255,7 +353,7 @@ func TestReconnectJobRequiresReconnectSession(t *testing.T) {
 	t.Run("another claim's session", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		f := newReconnectFixture(t, ctx)
+		f := newReconnectFixture(t, ctx, nil)
 		// An earlier claim's session is still resumable from the cache; only the
 		// one registered last is this job's reconnect session.
 		other := mintClaim(t, 2)
@@ -269,7 +367,7 @@ func TestReconnectJobRequiresReconnectSession(t *testing.T) {
 	t.Run("right session id, wrong key", func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		f := newReconnectFixture(t, ctx)
+		f := newReconnectFixture(t, ctx, nil)
 		claimID := mintClaim(t, 1)
 		f.register(t, claimID)
 		// Same session id and info; a different key.
@@ -292,7 +390,7 @@ func TestReconnectJobRequiresReconnectSession(t *testing.T) {
 func TestReconnectCommandPortRequiresAuthentication(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	f := newReconnectFixture(t, ctx)
+	f := newReconnectFixture(t, ctx, nil)
 	f.register(t, mintClaim(t, 1))
 	hc, err := client.ConnectAndAuthenticate(ctx, f.cs.Sinful(), &security.SecurityConfig{
 		Command:        reconnect.CACmd,
