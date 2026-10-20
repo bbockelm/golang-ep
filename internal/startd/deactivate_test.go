@@ -73,7 +73,8 @@ func TestDeactivateSoftVacate(t *testing.T) {
 	// The starter was SIGTERMed and exits; slot returns to Claimed/Idle.
 	waitActivity(t, core, "Idle", 20*time.Second)
 	select {
-	case <-runCh:
+	case err := <-runCh:
+		t.Logf("shadow.Run returned: %v", err)
 	case <-time.After(20 * time.Second):
 		t.Fatal("shadow.Run did not end after soft vacate")
 	}
@@ -99,7 +100,8 @@ func TestDeactivateForcibly(t *testing.T) {
 	}
 	waitActivity(t, core, "Idle", 20*time.Second)
 	select {
-	case <-runCh:
+	case err := <-runCh:
+		t.Logf("shadow.Run returned: %v", err)
 	case <-time.After(20 * time.Second):
 		t.Fatal("shadow.Run did not end after forcible vacate")
 	}

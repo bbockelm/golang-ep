@@ -431,7 +431,8 @@ func Run(ctx context.Context, t StarterSide, opts Options) error {
 	// the starter forever.
 	reapAfterKill := func() {
 		select {
-		case <-waitCh:
+		case err := <-waitCh:
+			log.Debug(logging.DestinationGeneral, "job reaped after SIGKILL", "err", err)
 		case <-time.After(finalizeTimeout):
 			log.Warn(logging.DestinationGeneral, "job did not reap after SIGKILL; abandoning wait")
 		}
@@ -524,8 +525,9 @@ func Run(ctx context.Context, t StarterSide, opts Options) error {
 			if err := cli.RegisterJobInfo(ctx, upd); err != nil {
 				log.Warn(logging.DestinationGeneral, "register_job_info failed", "err", err.Error())
 			}
-		case <-waitCh:
+		case err := <-waitCh:
 			waitDone = true
+			log.Debug(logging.DestinationGeneral, "job process exited", "err", err)
 		}
 	}
 	end := time.Now()

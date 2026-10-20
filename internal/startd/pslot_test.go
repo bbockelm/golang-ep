@@ -317,7 +317,8 @@ func TestDSlotActivateAndRelease(t *testing.T) {
 
 	waitSlotState(t, d, "Claimed", 5*time.Second)
 	select {
-	case <-runCh:
+	case err := <-runCh:
+		t.Logf("shadow.Run returned: %v", err)
 	case <-ctx.Done():
 		t.Fatal("job never finished on the dslot")
 	}

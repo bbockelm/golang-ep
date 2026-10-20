@@ -13,3 +13,16 @@ updates:
           - "*"
     commit-message:
       prefix: "ci(deps)"
+
+  # Go modules. This repo is a single module rooted at "/". Minor and patch
+  # bumps are grouped into one weekly PR to cut noise; majors come as
+  # individual PRs so they get reviewed on their own.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      go-minor-and-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "deps"
