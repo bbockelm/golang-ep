@@ -3,18 +3,18 @@ module github.com/bbockelm/golang-ep
 go 1.26.0
 
 require (
-	github.com/PelicanPlatform/classad v0.29.14
-	github.com/PelicanPlatform/classad/collections v0.29.6
-	github.com/bbockelm/cedar v0.7.6
-	github.com/bbockelm/golang-ap v0.0.0-20260712133627-64ae8d7636a0
-	github.com/bbockelm/golang-htcondor v0.20.0
-	golang.org/x/sys v0.47.0
+	github.com/PelicanPlatform/classad v0.31.5
+	github.com/PelicanPlatform/classad/collections v0.31.5
+	github.com/bbockelm/cedar v0.7.11
+	github.com/bbockelm/golang-ap v0.2.0
+	github.com/bbockelm/golang-htcondor v0.20.2
+	golang.org/x/sys v0.48.0
 )
 
 require (
-	github.com/RoaringBitmap/roaring/v2 v2.19.0 // indirect
+	github.com/RoaringBitmap/roaring/v2 v2.29.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 )
