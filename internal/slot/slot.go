@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/PelicanPlatform/classad/classad"
-	"github.com/bbockelm/golang-htcondor/config"
+	"github.com/htcondor/golang-htcondor/config"
 	"golang.org/x/sys/unix"
 
 	"github.com/bbockelm/golang-ep/internal/claim"

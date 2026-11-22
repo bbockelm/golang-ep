@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/bbockelm/cedar/stream"
-	"github.com/bbockelm/golang-htcondor/logging"
+	"github.com/htcondor/golang-htcondor/logging"
 )
 
 // encryptedPeers returns two cedar streams over a real TCP connection (so they

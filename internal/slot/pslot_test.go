@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bbockelm/golang-htcondor/config"
+	"github.com/htcondor/golang-htcondor/config"
 )
 
 func mustCfg(t *testing.T, body string) *config.Config {

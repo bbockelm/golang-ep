@@ -12,9 +12,9 @@ import (
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
 	shadow "github.com/bbockelm/golang-ap/shadow"
-	"github.com/bbockelm/golang-htcondor/config"
-	"github.com/bbockelm/golang-htcondor/logging"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	"github.com/htcondor/golang-htcondor/config"
+	"github.com/htcondor/golang-htcondor/logging"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 
 	"github.com/bbockelm/golang-ep/internal/claim"
 	"github.com/bbockelm/golang-ep/internal/persist"

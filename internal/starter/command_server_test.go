@@ -11,8 +11,8 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	"github.com/bbockelm/cedar/stream"
-	"github.com/bbockelm/golang-htcondor/logging"
-	"github.com/bbockelm/golang-htcondor/syscalls"
+	"github.com/htcondor/golang-htcondor/logging"
+	"github.com/htcondor/golang-htcondor/syscalls"
 
 	"github.com/bbockelm/golang-ep/internal/reconnect"
 )

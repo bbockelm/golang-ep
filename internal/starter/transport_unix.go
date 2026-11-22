@@ -14,8 +14,8 @@ import (
 
 	"github.com/PelicanPlatform/classad/classad"
 	"github.com/bbockelm/cedar/stream"
-	"github.com/bbockelm/golang-htcondor/logging"
-	"github.com/bbockelm/golang-htcondor/sharedport"
+	"github.com/htcondor/golang-htcondor/logging"
+	"github.com/htcondor/golang-htcondor/sharedport"
 )
 
 // Process-mode transport: the startd and a separate condor_starter-equivalent
@@ -314,9 +314,9 @@ const DefaultStartdGapLease = 20 * time.Minute
 // elapses with no redial. That is the single point where "keep the job across a
 // startd restart" becomes "give up": bounded, and never during a transient gap.
 type unixStarter struct {
-	ln   *net.UnixListener
-	log  *logging.Logger
-	gap  time.Duration // startd-gap self-destruct lease
+	ln  *net.UnixListener
+	log *logging.Logger
+	gap time.Duration // startd-gap self-destruct lease
 
 	runCtrl  *stream.Stream // pipe end handed to Run via Control()
 	pumpCtrl *stream.Stream // pipe end the relay bridges

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/PelicanPlatform/classad/classad"
-	htcondor "github.com/bbockelm/golang-htcondor"
+	htcondor "github.com/htcondor/golang-htcondor"
 )
 
 // TestStage10CxxShadowReconnect: a stock C++ shadow reconnects to our starter.

@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/PelicanPlatform/classad/classad"
-	htcondor "github.com/bbockelm/golang-htcondor"
+	htcondor "github.com/htcondor/golang-htcondor"
 )
 
 // TestStage9AllGo is the marquee Stage-9 test: the maximally-Go HTCondor

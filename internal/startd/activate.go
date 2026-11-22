@@ -16,7 +16,7 @@ import (
 	"github.com/PelicanPlatform/classad/classad"
 	"github.com/bbockelm/cedar/message"
 	cedarserver "github.com/bbockelm/cedar/server"
-	"github.com/bbockelm/golang-htcondor/logging"
+	"github.com/htcondor/golang-htcondor/logging"
 
 	"github.com/bbockelm/golang-ep/internal/adwire"
 	"github.com/bbockelm/golang-ep/internal/claim"

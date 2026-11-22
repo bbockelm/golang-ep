@@ -10,7 +10,7 @@ import (
 // and Environment job-ad attributes (src/condor_utils/condor_arglist.cpp,
 // ArgList::AppendArgsV2Raw): tokens are separated by whitespace; a section
 // wrapped in single quotes protects whitespace (and quote characters); inside a
-// quoted section a doubled single quote ('') is a literal single quote.
+// quoted section a doubled single quote (”) is a literal single quote.
 // Backslash has no special meaning. This is the exact inverse of the storage
 // format golang-htcondor's submit package produces (processNewStyleArguments).
 func splitV2Raw(s string) []string {
