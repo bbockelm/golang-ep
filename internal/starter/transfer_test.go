@@ -18,8 +18,8 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
-	"github.com/bbockelm/golang-htcondor/filetransfer"
-	"github.com/bbockelm/golang-htcondor/syscalls"
+	"github.com/htcondor/golang-htcondor/filetransfer"
+	"github.com/htcondor/golang-htcondor/syscalls"
 )
 
 // testClaimID is a synthetic startd claim id in the C++ format

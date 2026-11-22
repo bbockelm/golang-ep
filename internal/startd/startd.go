@@ -28,7 +28,7 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
-	"github.com/bbockelm/golang-htcondor/logging"
+	"github.com/htcondor/golang-htcondor/logging"
 
 	"github.com/bbockelm/golang-ep/internal/advertise"
 	"github.com/bbockelm/golang-ep/internal/claim"

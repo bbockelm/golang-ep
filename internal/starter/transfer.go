@@ -10,7 +10,7 @@
 //     session -> put_secret(TransferKey) + EOM -> filetransfer.ReceiveStream
 //     (the server SENDS its input plan; we receive into the sandbox).
 //   - output: startCommand(FILETRANS_DOWNLOAD=61001) -> put_secret(TransferKey)
-//     + EOM -> filetransfer.SendStream with final_transfer=1 (we SEND the
+//   - EOM -> filetransfer.SendStream with final_transfer=1 (we SEND the
 //     output plan; the server lands it in the job's Iwd).
 //
 // TransferSocket and TransferKey come from the get_job_info job ad; the
@@ -36,8 +36,8 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	"github.com/bbockelm/cedar/stream"
-	"github.com/bbockelm/golang-htcondor/filetransfer"
-	"github.com/bbockelm/golang-htcondor/syscalls"
+	"github.com/htcondor/golang-htcondor/filetransfer"
+	"github.com/htcondor/golang-htcondor/syscalls"
 )
 
 // stdout/stderr sandbox-to-wire names (file_transfer.cpp StdoutRemapName /

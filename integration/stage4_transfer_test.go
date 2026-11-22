@@ -14,8 +14,8 @@ import (
 
 	"github.com/PelicanPlatform/classad/classad"
 	"github.com/bbockelm/cedar/security"
-	htcondor "github.com/bbockelm/golang-htcondor"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	htcondor "github.com/htcondor/golang-htcondor"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 
 	"github.com/bbockelm/golang-ap/shadow"
 )

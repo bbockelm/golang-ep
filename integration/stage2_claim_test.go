@@ -17,8 +17,8 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
-	htcondor "github.com/bbockelm/golang-htcondor"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	htcondor "github.com/htcondor/golang-htcondor"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 )
 
 // TestStage2Claim proves the Go startd's Stage-2 claim surface end to end

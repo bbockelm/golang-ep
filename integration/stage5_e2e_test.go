@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/PelicanPlatform/classad/classad"
-	htcondor "github.com/bbockelm/golang-htcondor"
+	htcondor "github.com/htcondor/golang-htcondor"
 )
 
 // TestStage5EndToEnd is the marquee Stage-5 test: the first fully end-to-end run

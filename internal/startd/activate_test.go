@@ -14,7 +14,7 @@ import (
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
 	shadow "github.com/bbockelm/golang-ap/shadow"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 )
 
 // startCoreServer boots a Core + cedar server on a loopback listener and

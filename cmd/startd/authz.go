@@ -4,8 +4,8 @@ import (
 	"github.com/bbockelm/cedar/commands"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
-	"github.com/bbockelm/golang-htcondor/authz"
-	"github.com/bbockelm/golang-htcondor/daemon"
+	"github.com/htcondor/golang-htcondor/authz"
+	"github.com/htcondor/golang-htcondor/daemon"
 
 	"github.com/bbockelm/golang-ep/internal/claim"
 	"github.com/bbockelm/golang-ep/internal/reconnect"

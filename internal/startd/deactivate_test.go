@@ -6,7 +6,7 @@ import (
 	"time"
 
 	shadow "github.com/bbockelm/golang-ap/shadow"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 
 	"github.com/bbockelm/golang-ep/internal/starter"
 )

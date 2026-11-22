@@ -19,10 +19,10 @@ import (
 	"github.com/bbockelm/cedar/message"
 	"github.com/bbockelm/cedar/security"
 	cedarserver "github.com/bbockelm/cedar/server"
-	"github.com/bbockelm/golang-htcondor/config"
-	"github.com/bbockelm/golang-htcondor/daemon"
-	"github.com/bbockelm/golang-htcondor/logging"
-	hstartd "github.com/bbockelm/golang-htcondor/startd"
+	"github.com/htcondor/golang-htcondor/config"
+	"github.com/htcondor/golang-htcondor/daemon"
+	"github.com/htcondor/golang-htcondor/logging"
+	hstartd "github.com/htcondor/golang-htcondor/startd"
 
 	"github.com/bbockelm/golang-ep/internal/claim"
 	"github.com/bbockelm/golang-ep/internal/reconnect"
@@ -595,8 +595,8 @@ func TestAuthzReconfigReloads(t *testing.T) {
 // off again closes it.
 func TestAuthzClaimSessionHole(t *testing.T) {
 	knobs := map[string]string{
-		"ALLOW_DAEMON":                             "schedd@pool",
-		"ALLOW_ADMINISTRATOR":                      "admin@pool",
+		"ALLOW_DAEMON":        "schedd@pool",
+		"ALLOW_ADMINISTRATOR": "admin@pool",
 		"SEC_ENABLE_MATCH_PASSWORD_AUTHENTICATION": "FALSE",
 	}
 	as := startAuthzStartd(t, knobs)

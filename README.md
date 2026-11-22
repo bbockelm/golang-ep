@@ -152,5 +152,5 @@ them in their own systemd slices.
 
 - [golang-ap](https://github.com/bbockelm/golang-ap) — pure-Go schedd + shadow (the Access Point)
 - [golang-collector](https://github.com/bbockelm/golang-collector) — pure-Go collector + negotiator
-- [golang-htcondor](https://github.com/bbockelm/golang-htcondor) — Go HTCondor client library
+- [golang-htcondor](https://github.com/htcondor/golang-htcondor) — Go HTCondor client library
 - [cedar](https://github.com/bbockelm/cedar) — the CEDAR wire protocol + security in Go

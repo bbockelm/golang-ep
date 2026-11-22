@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	"github.com/bbockelm/golang-htcondor/version"
+	"github.com/htcondor/golang-htcondor/version"
 )
 
 // condorVersionString renders the "$CondorVersion: ... $" banner tagging this

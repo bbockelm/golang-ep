@@ -3,18 +3,18 @@ module github.com/bbockelm/golang-ep
 go 1.26.0
 
 require (
-	github.com/PelicanPlatform/classad v0.29.14
-	github.com/PelicanPlatform/classad/collections v0.29.6
-	github.com/bbockelm/cedar v0.7.6
-	github.com/bbockelm/golang-ap v0.0.0-20260712133627-64ae8d7636a0
-	github.com/bbockelm/golang-htcondor v0.20.0
-	golang.org/x/sys v0.47.0
+	github.com/PelicanPlatform/classad v0.38.3
+	github.com/PelicanPlatform/classad/collections v0.38.3
+	github.com/bbockelm/cedar v0.7.15
+	github.com/bbockelm/golang-ap v0.2.1-0.20261122013510-d884efed08a9
+	github.com/htcondor/golang-htcondor v0.25.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
-	github.com/RoaringBitmap/roaring/v2 v2.19.0 // indirect
+	github.com/RoaringBitmap/roaring/v2 v2.29.0 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
-	github.com/klauspost/compress v1.19.1 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/tidwall/btree v1.8.1 // indirect
 )
@@ -41,8 +41,8 @@ require (
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/sethvargo/go-retry v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	modernc.org/libc v1.74.3 // indirect
