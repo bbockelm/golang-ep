@@ -3,11 +3,11 @@ module github.com/bbockelm/golang-ep
 go 1.26.0
 
 require (
-	github.com/PelicanPlatform/classad v0.38.3
-	github.com/PelicanPlatform/classad/collections v0.38.3
+	github.com/PelicanPlatform/classad v0.44.1
+	github.com/PelicanPlatform/classad/collections v0.44.1
 	github.com/bbockelm/cedar v0.7.15
-	github.com/bbockelm/golang-ap v0.2.1-0.20261122013510-d884efed08a9
-	github.com/htcondor/golang-htcondor v0.25.0
+	github.com/bbockelm/golang-ap v0.3.0
+	github.com/htcondor/golang-htcondor v0.26.1
 	golang.org/x/sys v0.50.0
 )
 
@@ -28,9 +28,11 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
+	github.com/htcondor/cedar v0.7.17 // indirect
 	github.com/jcmturner/aescts/v2 v2.0.0 // indirect
 	github.com/jcmturner/dnsutils/v2 v2.0.0 // indirect
 	github.com/jcmturner/gofork v1.7.6 // indirect
+	github.com/jcmturner/goidentity/v6 v6.0.1 // indirect
 	github.com/jcmturner/gokrb5/v8 v8.4.4 // indirect
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
